@@ -1,0 +1,61 @@
+name: Build Yujin DAppBridge AAR
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-aar:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 解压工程并校验 SDK
+        run: |
+          set -e
+          unzip -q "Yujin-DAppBridge_GitHub编译专用包.zip" -d work
+          test -s "work/native-plugin-src/Yujin-DAppBridge/android/libs/uniapp-v8-release.aar"
+          unzip -tq "work/native-plugin-src/Yujin-DAppBridge/android/libs/uniapp-v8-release.aar"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - name: 安装 Android SDK
+        run: sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.14.3
+
+      - name: 编译 release AAR
+        run: |
+          gradle -p "work/native-plugin-src/Yujin-DAppBridge/android" --no-daemon clean assembleRelease
+
+      - name: 打包 HBuilderX 插件包
+        run: |
+          set -e
+          SRC="work/native-plugin-src/Yujin-DAppBridge"
+          OUT="dist/Yujin-DAppBridge/android"
+          mkdir -p "$OUT"
+          cp "$SRC/package.json" "dist/Yujin-DAppBridge/package.json"
+          AAR=$(find "$SRC/android/build/outputs/aar" -name "*-release.aar" | head -1)
+          cp "$AAR" "$OUT/Yujin-DAppBridge-release.aar"
+          (cd dist && zip -qr Yujin-DAppBridge-HBuilderX.zip Yujin-DAppBridge)
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Yujin-DAppBridge-AAR
+          path: |
+            work/native-plugin-src/Yujin-DAppBridge/android/build/outputs/aar/*.aar
+            dist/Yujin-DAppBridge-HBuilderX.zip
+          if-no-files-found: error
